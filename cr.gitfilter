@@ -2,5 +2,5 @@
 # and replace CR with LF on checkin.
 [filter "cr"]
   clean = tr '\\r' '\\n'
-  smudge = tr '\\n' '\\r
-'
+  smudge = tr '\\n' '\\r'
+
