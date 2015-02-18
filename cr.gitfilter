@@ -1,0 +1,6 @@
+# Add this to your ~/.gitconfig to replace LF with CR on checkout
+# and replace CR with LF on checkin.
+[filter "cr"]
+  clean = tr '\\r' '\\n'
+  smudge = tr '\\n' '\\r
+'
