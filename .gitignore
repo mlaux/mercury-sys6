@@ -2,4 +2,6 @@
 *.o
 *.cmds
 *.NJ
+*.flt
+*.gdb
 XMacPP

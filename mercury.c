@@ -5,7 +5,7 @@
 #include <QuickDraw.h>
 #include <Fonts.h>
 #include <Events.h>
-#include <Windows.h>
+#include <MacWindows.h>
 #include <TextEdit.h>
 #include <Dialogs.h>
 #include <Menus.h>
@@ -14,11 +14,11 @@
 #include <MacMemory.h>
 #include <Files.h>
 #include <OSUtils.h>
-#include <DiskInit.h>
 #include <Traps.h>
 #include <Controls.h>
 #include <ControlDefinitions.h>
 #include <Sound.h>
+#include <TextUtils.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,11 +50,15 @@
 #define NICK_MAX 32
 #define CHAN_MAX 32
 
-#define HANDLER_TYPES (const char *, const char *, const char *, const char *, const char **, int)
+#define HANDLER_TYPES (const char *, const char *, const char *, const char *, char **, int)
 #define HANDLER_FN(name) void handle_ ## name HANDLER_TYPES
 
 // TODO: fix this macro
 #define COMMAND(name) { #name , handle_ ## name }
+
+#ifdef __GNUC__
+int __errno;
+#endif
 
 typedef struct ConnectionInfo {
 	char host[HOST_MAX];
@@ -102,6 +106,14 @@ void strncpy_s(char *dest, const char *src, int n)
 {
 	strncpy(dest, src, n);
 	dest[n - 1] = 0;
+}
+
+void P2C(char *str)
+{
+	int len = str[0], k;
+	for(k = 1; k < len; ++k)
+		str[k] = str[k + 1];
+	str[len] = 0;
 }
 
 void toolbox_init(void)
@@ -161,7 +173,7 @@ void te_addline(const char *line, TEHandle te)
 	TESelView(te);
 }
 
-void log(const char *fmt, ...)
+void te_append(const char *fmt, ...)
 {
 	static char message[IRC_LINE_MAX];
 	va_list list;
@@ -181,18 +193,18 @@ StreamPtr connect(const char *host, const unsigned short port)
 	
 	ip = dns_lookup(host);
 	if(ip == 0) {
-		log("Could not look up %s", host);
+		te_append("Could not look up %s", host);
 		return 0;
 	}
-	log("Connecting to host %s on port %d...", dns_format_ip(ip), port);
+	te_append("Connecting to host %s on port %d...", dns_format_ip(ip), port);
 	stream = tcp_create_stream();
 	if(stream == 0) {
-		log("stream failed");
+		te_append("stream failed");
 		return 0;
 	}
 	err = tcp_connect(stream, ip, port);
 	if(err != noErr) {
-		log("Connection failed with error code %d.", err);
+		te_append("Connection failed with error code %d.", err);
 	}
 	return stream;
 }
@@ -221,31 +233,31 @@ char *extract_prefix(char *line, char **prefix, char **user, char **host)
 	return line;
 }
 
-void handle_numeric(const char *prefix, int numeric, const char *params[], int nParams)
+void handle_numeric(const char *prefix, int numeric, char *params[], int nParams)
 {
 	switch(numeric) {
 		default:
 			if(nParams > 0) {
-				log("%d %s", numeric, params[nParams - 1]);
+				te_append("%d %s", numeric, params[nParams - 1]);
 			}
 			break;
 	}
 }
 
 void handle_PING(const char *prefix, const char *user, const char *host, 
-					const char *command, const char **params, int nParams)
+					const char *command, char **params, int nParams)
 {
 	send_pong(gStream, params[0]);
 }
 
 void handle_NOTICE(const char *prefix, const char *user, const char *host, 
-					const char *command, const char **params, int nParams)
+					const char *command, char **params, int nParams)
 {
-	log("<%s> %s", prefix, params[nParams - 1]);
+	te_append("<%s> %s", prefix, params[nParams - 1]);
 }
 
 int dispatch_command(const char *prefix, const char *user, const char *host, 
-						const char *command, const char **params, int nParams)
+						const char *command, char **params, int nParams)
 {
 	int k;
 	for(k = 0; k < NUM_COMMAND_HANDLERS; ++k) {
@@ -422,20 +434,19 @@ void ask_for_deets(ConnectionInfo *ci)
 
 	if(hit == DLOG_CONN_INFO_CONNECT) {
 		Str255 host, port, nick;
-		char *c_host, *c_port, *c_nick;
 		
 		GetDialogItemText(host_edit, host);
 		GetDialogItemText(port_edit, port);
 		GetDialogItemText(nick_edit, nick);
 		
-		c_host = P2CStr(host);
-		c_port = P2CStr(port);
-		c_nick = P2CStr(nick);
+		P2C(host);
+		P2C(port);
+		P2C(nick);
 		
-		strncpy_s(ci->host, c_host, HOST_MAX);
-		strncpy_s(ci->nick, c_nick, NICK_MAX);
+		strncpy_s(ci->host, host, HOST_MAX);
+		strncpy_s(ci->nick, nick, NICK_MAX);
 		
-		ci->port = atoi(c_port);
+		ci->port = atoi(port);
 		
 		DisposeDialog(dlg);
 	} else {

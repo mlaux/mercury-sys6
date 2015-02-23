@@ -40,7 +40,7 @@ void spoll(StreamPtr stream, void (*process_line)(char *))
 		read = IRC_LINE_MAX - written;
 		err = tcp_read(stream, buf + written, &read);
 		if(err != noErr) {
-			log("read error %d", err);
+			te_append("read error %d", err);
 			return;
 		}
 		written += read;

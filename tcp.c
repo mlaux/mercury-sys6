@@ -6,6 +6,7 @@
 #include <MixedMode.h>
 
 #include "AddressXlation.h"
+#include "mercury.h"
 
 #define RECV_BUF_SIZE 8192
 
@@ -15,8 +16,6 @@ static ResultUPP gLookupDoneProc;
 static Ptr gRecvBuf;
 
 static char *gDataReceivedPtr;
-
-extern void log(const char *str, ...);
 
 static void mem_fill(char val, void *p, int len)
 {
@@ -73,12 +72,12 @@ StreamPtr tcp_create_stream(void)
 	err = PBControl((ParamBlockRec *) &pb, false);
 	
 	if(err != noErr) {
-		log("TCPCreate error %d", err);
+		te_append("TCPCreate error %d", err);
 		return 0;
 	}
 	
 	if(pb.ioResult != noErr) {
-		log("ioResult %d", pb.ioResult);
+		te_append("ioResult %d", pb.ioResult);
 		return 0;
 	}
 	
@@ -156,7 +155,7 @@ unsigned short tcp_available(StreamPtr stream)
 	err = PBControl((ParamBlockRec *) &pb, false);
 	
 	if(err != noErr) {
-		log("TCPStatus error %d", err);
+		te_append("TCPStatus error %d", err);
 		return 0;
 	}
 		

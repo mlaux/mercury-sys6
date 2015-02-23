@@ -1,0 +1,20 @@
+CC = m68k-unknown-elf-gcc
+CFLAGS = -Wno-multichar -c
+LDFLAGS = -gc-sections
+SOURCES = mercury.c irc.c tcp.c netutil.c dnr.c
+OBJECTS = $(SOURCES: .c=.o)
+ELF_OUT = mercury.elf
+FLT_OUT = mercury.flt
+APPL_OUT = Mercury
+
+all: $(APPL_OUT)
+
+$(APPL_OUT): $(FLT_OUT)
+	MakeAPPL -c "$(FLT_OUT)" -o "$@"
+
+$(FLT_OUT): $(OBJECTS)
+	$(CC) $(LDFLAGS) $(OBJECTS) -o $@
+
+.c.o:
+	$(CC) $(CFLAGS) $< -o $@
+
