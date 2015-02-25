@@ -108,10 +108,10 @@ void strncpy_s(char *dest, const char *src, int n)
 	dest[n - 1] = 0;
 }
 
-void P2C(char *str)
+void P2C(unsigned char *str)
 {
 	int len = str[0], k;
-	for(k = 1; k < len; ++k)
+	for(k = 0; k < len; ++k)
 		str[k] = str[k + 1];
 	str[len] = 0;
 }
@@ -443,10 +443,10 @@ void ask_for_deets(ConnectionInfo *ci)
 		P2C(port);
 		P2C(nick);
 		
-		strncpy_s(ci->host, host, HOST_MAX);
-		strncpy_s(ci->nick, nick, NICK_MAX);
+		strncpy_s(ci->host, (char *) host, HOST_MAX);
+		strncpy_s(ci->nick, (char *) nick, NICK_MAX);
 		
-		ci->port = atoi(port);
+		ci->port = atoi((char *) port);
 		
 		DisposeDialog(dlg);
 	} else {
