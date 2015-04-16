@@ -1,50 +1,13 @@
-#include <MacTCP.h>
-#include <Limits.h>
-#include <MacTypes.h>
-#include <Resources.h>
-#include <QuickDraw.h>
-#include <Fonts.h>
-#include <Events.h>
-#include <MacWindows.h>
-#include <TextEdit.h>
-#include <Dialogs.h>
-#include <Menus.h>
-#include <Devices.h>
-#include <ToolUtils.h>
-#include <MacMemory.h>
-#include <Files.h>
-#include <OSUtils.h>
-#include <Traps.h>
-#include <Controls.h>
-#include <ControlDefinitions.h>
-#include <Sound.h>
-#include <TextUtils.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "all_toolbox.h"
 #include "irc.h"
 #include "netutil.h"
+#include "mercury_resources.h"
+#include "str_compat.h"
 #include "tcp.h"
-
-#define MBAR_MENU 128
-
-#define MENU_APPLE 128
-#define MENU_CONNECTION 129
-#define MENU_CHANNEL 130
-
-#define MENU_APPLE_ABOUT 1
-#define MENU_CONNECTION_QUIT 1
-
-#define DLOG_CONN_INFO 128
-#define DLOG_CONN_INFO_CONNECT 1
-#define DLOG_CONN_INFO_QUIT 2
-#define DLOG_CONN_INFO_HOST 6
-#define DLOG_CONN_INFO_PORT 7
-#define DLOG_CONN_INFO_NICK 8
-
-#define ALRT_WARNING 128
 
 #define HOST_MAX 64
 #define NICK_MAX 32
@@ -53,7 +16,7 @@
 #define HANDLER_TYPES (const char *, const char *, const char *, const char *, char **, int)
 #define HANDLER_FN(name) void handle_ ## name HANDLER_TYPES
 
-// TODO: fix this macro
+// TODO: fix this macro. It works on gcc but not SC
 #define COMMAND(name) { #name , handle_ ## name }
 
 #ifdef __GNUC__
@@ -101,20 +64,6 @@ IncomingCommand command_handlers[NUM_COMMAND_HANDLERS] = {
 	//COMMAND(PING),
 	//COMMAND(NOTICE)
 };
-
-void strncpy_s(char *dest, const char *src, int n)
-{
-	strncpy(dest, src, n);
-	dest[n - 1] = 0;
-}
-
-void P2C(unsigned char *str)
-{
-	int len = str[0], k;
-	for(k = 0; k < len; ++k)
-		str[k] = str[k + 1];
-	str[len] = 0;
-}
 
 void toolbox_init(void)
 {
@@ -237,9 +186,6 @@ void handle_numeric(const char *prefix, int numeric, char *params[], int nParams
 {
 	switch(numeric) {
 		default:
-			if(nParams > 0) {
-				te_append("%d %s", numeric, params[nParams - 1]);
-			}
 			break;
 	}
 }
@@ -272,6 +218,7 @@ int dispatch_command(const char *prefix, const char *user, const char *host,
 
 void process_line(char *line)
 {
+	char *line_copy;
 	char *prefix, *user, *host;
 	char *sp, *command;
 	char *lastParam;
@@ -281,6 +228,8 @@ void process_line(char *line)
 		
 	// get prefix and advance line pointer
 	line = extract_prefix(line, &prefix, &user, &host);
+	
+	line_copy = strdup(line);
 	
 	sp = strchr(line, ' ');
 	*sp++ = 0;
@@ -307,14 +256,16 @@ void process_line(char *line)
 	// start with 0, which a 0 base parameter would interpret as octal
 	numeric = strtol(command, NULL, 10);
 	if(numeric != 0) {
+		// let's always put numerics in the server tab
+		te_addline(line_copy, gServerTab.textEdit);
 		handle_numeric(prefix, numeric, params, nParams);
 	} else {
 		if(!dispatch_command(prefix, user, host, command, params, nParams)) {
-			// line has long been butchered and filled with \0s
-			// TODO: log the original line
-			// log(line);
+			te_addline(line_copy, gCurrentTab->textEdit);
 		}
 	}
+	
+	free(line_copy);
 	
 }
 
