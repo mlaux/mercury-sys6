@@ -29,22 +29,22 @@
 int __errno;
 #endif
 
-typedef struct ConnectionInfo {
+typedef struct {
 	char host[HOST_MAX];
 	tcp_port port;
 	char nick[NICK_MAX];
 } ConnectionInfo;
 
-typedef struct IncomingCommand {
+typedef struct {
 	const char *command;
 	void (*handler) HANDLER_TYPES;
 } IncomingCommand;
 
-typedef struct Tab {
+typedef struct __Tab {
 	TEHandle textEdit;
 	ControlHandle scrollBar;
 	char name[CHAN_MAX];
-	struct Tab *next;
+	struct __Tab *next;
 } Tab;
 
 #define TE(tab) (**(tab)->textEdit)
@@ -112,13 +112,10 @@ void menu_init(void)
 
 void window_init(void)
 {
-	Rect wind_bounds;
+	Rect wind_bounds = qd.screenBits.bounds;
 
-	wind_bounds.top = 80;
-	wind_bounds.left = 80;
-	wind_bounds.bottom = 680;
-	wind_bounds.right = 880;
-	
+    InsetRect(&wind_bounds, 20, 20);
+
 	gMainWindow = NewWindow(NULL, &wind_bounds, "\pMercury", true, documentProc, (WindowPtr) -1, true, 0);
 	SetPort(gMainWindow);
 }
@@ -584,6 +581,13 @@ void tabs_draw(WindowPtr window)
 		
 		++tabNum;
 	}
+}
+
+void te_click_loop(void)
+{
+    asm {
+        move.w #true, d0
+    }
 }
 
 int main(void)
