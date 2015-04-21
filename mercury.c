@@ -13,8 +13,14 @@
 #define NICK_MAX 32
 #define CHAN_MAX 32
 
+#define TAB_FONT "\pGeneva"
+#define TEXT_FONT "\pMonaco"
+
+#define TAB_FONT_SIZE 9
+#define TEXT_FONT_SIZE 12
+
 #define HANDLER_TYPES (const char *, const char *, const char *, const char *, char **, int)
-#define HANDLER_FN(name) void handle_ ## name HANDLER_TYPES
+#define HANDLER_PROTO(name) void handle_ ## name HANDLER_TYPES
 
 // TODO: fix this macro. It works on gcc but not SC
 #define COMMAND(name) { #name , handle_ ## name }
@@ -37,8 +43,8 @@ typedef struct IncomingCommand {
 typedef struct Tab {
 	TEHandle textEdit;
 	ControlHandle scrollBar;
-	ControlActionUPP scrollProc;
 	char name[CHAN_MAX];
+	struct Tab *next;
 } Tab;
 
 #define TE(tab) (**(tab)->textEdit)
@@ -50,17 +56,31 @@ StreamPtr gStream;
 WindowPtr gMainWindow;
 ControlActionUPP gScrollProc;
 
+short gTabFont;
+short gTextFont;
+
 Tab gServerTab;
+
+// for tab linked list
+Tab *gFirstTab;
+Tab *gLastTab;
 Tab *gCurrentTab;
 
-#define NUM_COMMAND_HANDLERS 2
+#define NUM_COMMAND_HANDLERS 3
 
-HANDLER_FN(PING);
-HANDLER_FN(NOTICE);
+HANDLER_PROTO(PING);
+HANDLER_PROTO(NOTICE);
+HANDLER_PROTO(JOIN);
+
+Tab *tab_alloc_new(const char *name);
+Tab *tab_get(short index);
+void tab_make_current(Tab *tab);
+short tab_containing(short x, short y);
 
 IncomingCommand command_handlers[NUM_COMMAND_HANDLERS] = {
 	{ "PING", handle_PING },
-	{ "NOTICE", handle_NOTICE }
+	{ "NOTICE", handle_NOTICE },
+	{ "JOIN", handle_JOIN }
 	//COMMAND(PING),
 	//COMMAND(NOTICE)
 };
@@ -74,6 +94,9 @@ void toolbox_init(void)
 	TEInit();
 	InitDialogs(NULL);
 	InitCursor();
+	
+	GetFNum(TAB_FONT, &gTabFont);
+	GetFNum(TEXT_FONT, &gTextFont);
 }
 
 void menu_init(void)
@@ -196,10 +219,25 @@ void handle_PING(const char *prefix, const char *user, const char *host,
 	send_pong(gStream, params[0]);
 }
 
+char hasJoined = 0;
+
 void handle_NOTICE(const char *prefix, const char *user, const char *host, 
 					const char *command, char **params, int nParams)
 {
 	te_append("<%s> %s", prefix, params[nParams - 1]);
+	if(!hasJoined) {
+		send_join(gStream, "#mercury_test");
+		hasJoined = true;
+	}
+}
+
+void handle_JOIN(const char *prefix, const char *user, const char *host, 
+					const char *command, char **params, int nParams)
+{
+	Tab *newTab = tab_alloc_new(params[0]);
+	tab_make_current(newTab);
+	
+	InvalRect(&gMainWindow->portRect);
 }
 
 int dispatch_command(const char *prefix, const char *user, const char *host, 
@@ -277,7 +315,7 @@ void scroll_proc(ControlRef theControl, ControlPartCode partCode)
 void handle_te_click(Point pt)
 {
 	GlobalToLocal(&pt);
-	if(PtInRect(pt, &(**gCurrentTab->textEdit).viewRect)) {
+	if(PtInRect(pt, &TE(gCurrentTab).viewRect)) {
 		TEClick(pt, false, gCurrentTab->textEdit);
 	}
 }
@@ -335,6 +373,17 @@ void menu_command(long action)
 	}
 }
 
+void handle_tab_click(Point pt)
+{
+	short tabNum;
+	
+	GlobalToLocal(&pt);
+	tabNum = tab_containing(pt.h, pt.v);
+	if(tabNum != -1) {
+		tab_make_current(tab_get(tabNum));
+	}
+}
+
 void handle_mouse_down(EventRecord *event, WindowPtr window, WindowPartCode clicked_part)
 {
 	switch(clicked_part) {
@@ -355,6 +404,7 @@ void handle_mouse_down(EventRecord *event, WindowPtr window, WindowPartCode clic
 			} else {
 				handle_te_click(event->where);
 				handle_control_click(window, event->where);
+				handle_tab_click(event->where);
 			}
 			break;
 		case inSysWindow:
@@ -415,8 +465,6 @@ int get_window_height(WindowPtr wp)
 	return wp->portRect.bottom - wp->portRect.top;
 }
 
-#define FONT "\pMonaco"
-
 #define TABS_WIDTH 100
 #define INPUT_HEIGHT 20
 #define TEXT_MARGIN 10
@@ -425,7 +473,6 @@ int get_window_height(WindowPtr wp)
 /* TODO: Make sure TEStyleNew and TESetStyle are supported on System 6 */
 void tab_new(Tab *tab, const char *name)
 {
-	short fontNum;
 	TextStyle style;
 	Rect rect = gMainWindow->portRect;
 	
@@ -437,10 +484,8 @@ void tab_new(Tab *tab, const char *name)
 	strncpy_s(tab->name, name, CHAN_MAX);
 	tab->textEdit = TEStyleNew(&rect, &rect);
 	TEAutoView(true, tab->textEdit);
-	GetFNum(FONT, &fontNum);
-	style.tsFont = fontNum;
+	style.tsFont = gTextFont;
 	TESetStyle(doFont, &style, true, tab->textEdit);
-	TEActivate(tab->textEdit);
 	
 	rect = gMainWindow->portRect;
 	rect.left = rect.right - SCROLL_WIDTH + 1;
@@ -448,6 +493,26 @@ void tab_new(Tab *tab, const char *name)
 	rect.bottom -= (SCROLL_WIDTH - 2); // make borders coincide with grow thing
 	
 	tab->scrollBar = NewControl(gMainWindow, &rect, "\p", true, 50, 0, 100, scrollBarProc, 0);
+	
+	gLastTab->next = tab;
+	tab->next = NULL;
+	gLastTab = tab;
+}
+
+Tab *tab_alloc_new(const char *name)
+{
+	Tab *tab = malloc(sizeof *tab);
+	tab_new(tab, name);
+	return tab;
+}
+
+Tab *tab_get(short index)
+{
+	Tab *cur;
+	int k = 0;
+	for(cur = gFirstTab; cur != NULL && k < index; cur = cur->next)
+		;
+	return cur;
 }
 
 void tab_make_current(Tab *tab)
@@ -457,6 +522,61 @@ void tab_make_current(Tab *tab)
 	}
 	gCurrentTab = tab;
 	TEActivate(gCurrentTab->textEdit);
+}
+
+int tab_get_count(void)
+{
+	Tab *cur;
+	int count = 0;
+	for(cur = gFirstTab; cur != NULL; cur = cur->next) {
+		++count;
+	}
+	return count;
+}
+
+short tab_containing(short x, short y)
+{
+	if(x >= 0 && x < TABS_WIDTH) {
+		short index = y / 30;
+		int count = tab_get_count();
+		if(index >= 0 && index < count) {
+			return index;
+		}
+	}
+	return -1;
+}
+
+void tabs_draw(WindowPtr window)
+{
+	Tab *cur;
+	Rect rect;
+	int tabNum = 0;
+	
+	TextFont(gTabFont);
+	TextSize(TAB_FONT_SIZE);
+	
+	for(cur = gFirstTab; cur != NULL; cur = cur->next) {
+		int len = strlen(cur->name);
+		
+		rect.left = 5;
+		rect.top = tabNum * 30;
+		rect.right = TABS_WIDTH;
+		rect.bottom = rect.top + 25;
+		
+		EraseRect(&rect);
+		
+		MoveTo(rect.left, rect.top + 10);
+		DrawText(cur->name, 0, len);
+		
+		if(cur == gCurrentTab) {
+			InvertRect(&rect);
+		} else {
+			FrameRect(&rect);
+		}
+		
+		
+		++tabNum;
+	}
 }
 
 int main(void)
@@ -475,6 +595,7 @@ int main(void)
 	gScrollProc = NewControlActionUPP(scroll_proc);
 	
 	tab_new(&gServerTab, connection.host);
+	gFirstTab = gLastTab = &gServerTab;
 	tab_make_current(&gServerTab);
 	
 	gStream = connect(connection.host, connection.port);
@@ -485,6 +606,8 @@ int main(void)
 		WindowPartCode clicked_part;
 		Boolean got_event;
 		char key;
+		
+		spoll(gStream, process_line);
 		
 		got_event = WaitNextEvent(everyEvent, &event, LONG_MAX, NULL);
 		if(got_event) {
@@ -508,20 +631,19 @@ int main(void)
 					window = (WindowPtr) event.message;
 					BeginUpdate(window);
 					if(window == gMainWindow) {
-						EraseRect(&(**gCurrentTab->textEdit).viewRect);
+						EraseRect(&TE(gCurrentTab).viewRect);
+						TextSize(TEXT_FONT_SIZE);
 						TEUpdate(&window->portRect, gCurrentTab->textEdit);
 						DrawControls(window);
+						tabs_draw(window);
 						DrawGrowIcon(window);
 					}
 					EndUpdate(window);
 					break;
 				case nullEvent:
-					spoll(gStream, process_line);
 					break;
 				
 			}
-		} else {
-			spoll(gStream, process_line);
 		}
 	}
 	
