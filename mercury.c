@@ -143,6 +143,10 @@ void te_addline(const char *line, TEHandle te)
 	TEInsert((char *) line, len, te);
 	TEInsert(&newline, 1, te);
 	TESelView(te);
+	
+	// TODO: if i leave this out the window doesn't always update
+	// but this seems incorrect...
+	InvalRect(&gMainWindow->portRect);
 }
 
 void te_append(const char *fmt, ...)
@@ -236,8 +240,6 @@ void handle_JOIN(const char *prefix, const char *user, const char *host,
 {
 	Tab *newTab = tab_alloc_new(params[0]);
 	tab_make_current(newTab);
-	
-	InvalRect(&gMainWindow->portRect);
 }
 
 int dispatch_command(const char *prefix, const char *user, const char *host, 
@@ -380,7 +382,11 @@ void handle_tab_click(Point pt)
 	GlobalToLocal(&pt);
 	tabNum = tab_containing(pt.h, pt.v);
 	if(tabNum != -1) {
-		tab_make_current(tab_get(tabNum));
+		Tab *tab = tab_get(tabNum);
+		if(tab)
+			tab_make_current(tab);
+		else
+			te_append("nullification crisis");
 	}
 }
 
@@ -473,7 +479,7 @@ int get_window_height(WindowPtr wp)
 /* TODO: Make sure TEStyleNew and TESetStyle are supported on System 6 */
 void tab_new(Tab *tab, const char *name)
 {
-	TextStyle style;
+	TextStyle style = { 0 };
 	Rect rect = gMainWindow->portRect;
 	
 	rect.left += TABS_WIDTH + TEXT_MARGIN;
@@ -485,6 +491,7 @@ void tab_new(Tab *tab, const char *name)
 	tab->textEdit = TEStyleNew(&rect, &rect);
 	TEAutoView(true, tab->textEdit);
 	style.tsFont = gTextFont;
+	style.tsSize = TEXT_FONT_SIZE;
 	TESetStyle(doFont, &style, true, tab->textEdit);
 	
 	rect = gMainWindow->portRect;
@@ -508,10 +515,10 @@ Tab *tab_alloc_new(const char *name)
 
 Tab *tab_get(short index)
 {
-	Tab *cur;
+	Tab *cur = gFirstTab;
 	int k = 0;
-	for(cur = gFirstTab; cur != NULL && k < index; cur = cur->next)
-		;
+	while(cur && k++ < index)
+		cur = cur->next;
 	return cur;
 }
 
@@ -522,6 +529,7 @@ void tab_make_current(Tab *tab)
 	}
 	gCurrentTab = tab;
 	TEActivate(gCurrentTab->textEdit);
+	InvalRect(&gMainWindow->portRect);
 }
 
 int tab_get_count(void)
@@ -558,14 +566,14 @@ void tabs_draw(WindowPtr window)
 	for(cur = gFirstTab; cur != NULL; cur = cur->next) {
 		int len = strlen(cur->name);
 		
-		rect.left = 5;
+		rect.left = 10;
 		rect.top = tabNum * 30;
 		rect.right = TABS_WIDTH;
 		rect.bottom = rect.top + 25;
 		
 		EraseRect(&rect);
 		
-		MoveTo(rect.left, rect.top + 10);
+		MoveTo(rect.left + 5, rect.top + 10);
 		DrawText(cur->name, 0, len);
 		
 		if(cur == gCurrentTab) {
@@ -573,7 +581,6 @@ void tabs_draw(WindowPtr window)
 		} else {
 			FrameRect(&rect);
 		}
-		
 		
 		++tabNum;
 	}
@@ -632,7 +639,6 @@ int main(void)
 					BeginUpdate(window);
 					if(window == gMainWindow) {
 						EraseRect(&TE(gCurrentTab).viewRect);
-						TextSize(TEXT_FONT_SIZE);
 						TEUpdate(&window->portRect, gCurrentTab->textEdit);
 						DrawControls(window);
 						tabs_draw(window);
